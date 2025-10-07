@@ -1,23 +1,17 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <title>Checkbox Filter Widget for Grist</title>
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    :root {
-      --gap: 8px;
-    }
+    :root { --gap: 8px; }
     html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
+      margin: 0; padding: 0; height: 100%;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
       background-color: var(--grist-theme-page-bg);
       color: var(--grist-theme-text);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
     }
     #container {
       position: relative;
@@ -25,14 +19,27 @@
       padding: 8px;
       box-sizing: border-box;
     }
-
-    /* dropdown is now a scrollable div holding checkboxes */
+    #controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    #search {
+      flex: 1;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--grist-theme-table-body-border);
+      background: var(--grist-theme-page-panels-main-panel-bg);
+      color: var(--grist-theme-text);
+      font-size: 13px;
+    }
+    #select-all-label { display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
     #dropdown {
       width: 100%;
-      height: calc(100% - 46px); /* leave space for config area if needed */
+      height: calc(100% - 74px);
       box-sizing: border-box;
-      margin: 0;
-      padding: 8px;
+      margin: 0; padding: 8px;
       overflow-y: auto;
       background-color: var(--grist-theme-page-panels-main-panel-bg);
       border: 1px solid var(--grist-theme-table-body-border);
@@ -40,8 +47,6 @@
       border-radius: 6px;
       font-size: 13px;
     }
-
-    /* error panel overlays right half if needed */
     #error {
       display: none;
       position: absolute;
@@ -58,80 +63,43 @@
       border-radius: 6px;
       z-index: 5;
     }
-
-    /* checkbox list styling */
     #checkbox-values { display: block; }
     #dropdown label { display: flex; align-items: center; gap: 8px; padding: 6px 4px; cursor: pointer; user-select: none; border-radius: 4px; }
     #dropdown label:hover { background: rgba(0,0,0,0.03); }
     #dropdown input[type="checkbox"] { transform: scale(1); width: 16px; height: 16px; }
-
-    /* container for top controls (search + select all) */
-    #controls {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    #search {
-      flex: 1;
-      padding: 6px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--grist-theme-table-body-border);
-      background: var(--grist-theme-page-panels-main-panel-bg);
-      color: var(--grist-theme-text);
-      box-sizing: border-box;
-      font-size: 13px;
-    }
-
-    /* config area below container */
     #config {
       display: none;
       padding: 8px;
       box-sizing: border-box;
       gap: 8px;
       align-items: center;
-      background: transparent;
+      margin-top: 6px;
     }
-    #config label { margin-right: 6px; }
     #config input[type="text"] {
-      padding: 6px 8px;
-      border-radius: 6px;
-      border: 1px solid var(--grist-theme-table-body-border);
-      background: var(--grist-theme-page-panels-main-panel-bg);
-      color: var(--grist-theme-text);
-      font-size: 13px;
+      padding: 6px 8px; border-radius: 6px; border: 1px solid var(--grist-theme-table-body-border);
+      background: var(--grist-theme-page-panels-main-panel-bg); color: var(--grist-theme-text); font-size: 13px;
     }
     #save {
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 0;
-      cursor: pointer;
-      background: var(--grist-theme-cursor);
-      color: var(--grist-theme-page-bg);
-      font-weight: 600;
+      padding: 6px 10px; border-radius: 6px; border: 0; cursor: pointer;
+      background: var(--grist-theme-cursor); color: var(--grist-theme-page-bg); font-weight: 600;
     }
-
-    /* small responsive adjustments */
     @media (max-width: 480px) {
-      #error { display: none; } /* hide overlay on small screens */
-      #dropdown { height: calc(100% - 80px); }
+      #error { display: none; }
+      #dropdown { height: calc(100% - 120px); }
     }
   </style>
 </head>
 <body>
   <div id="container">
-    <!-- controls: search + select all are injected by script -->
     <div id="controls" aria-hidden="false">
       <input id="search" placeholder="Rechercher..." type="search" aria-label="Rechercher options">
-      <label style="display:flex;align-items:center;gap:8px;">
+      <label id="select-all-label">
         <input id="select-all" type="checkbox" aria-label="Tout sélectionner">
         <span style="font-size:13px;">Tout sélectionner</span>
       </label>
     </div>
 
-    <!-- container where checkboxes will be rendered -->
     <div id="dropdown" role="list" tabindex="0" aria-label="Dropdown filter"></div>
-
     <div id="error" role="alert" aria-live="polite"></div>
   </div>
 
@@ -142,14 +110,6 @@
   </div>
 
   <script>
-  /*******************************************************************
-   * Checkbox Filter Widget (embedded)
-   * - Dynamic checkboxes in #dropdown
-   * - Search filter
-   * - Select all
-   * - Persist selection in sessionStorage when sessionID is set
-   * - Uses Grist plugin API (grist.ready, grist.onRecords, grist.setSelectedRows)
-   *******************************************************************/
   (function () {
     let currentoptions = [];
     let allRecords = [];
@@ -161,13 +121,8 @@
     function showError(msg) {
       const el = $('error');
       if (!el) return;
-      if (!msg) {
-        el.style.display = 'none';
-        el.innerHTML = '';
-      } else {
-        el.innerHTML = msg;
-        el.style.display = 'block';
-      }
+      if (!msg) { el.style.display = 'none'; el.innerHTML = ''; }
+      else { el.innerHTML = msg; el.style.display = 'block'; }
     }
 
     function restoreSelectionFromSession(uniqoptions) {
@@ -176,37 +131,62 @@
       if (raw === null) return [];
       try {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return parsed.map(v => String(v)).filter(v => uniqoptions.includes(String(v)));
-        }
-        if (typeof parsed === 'string' && uniqoptions.includes(parsed)) {
-          return [parsed];
-        }
+        if (Array.isArray(parsed)) return parsed.map(v => String(v)).filter(v => uniqoptions.includes(String(v)));
+        if (typeof parsed === 'string' && uniqoptions.includes(parsed)) return [parsed];
       } catch (e) {
         if (raw.length > 0 && uniqoptions.includes(raw)) return [raw];
       }
       return [];
     }
 
-    // Render checkboxes into #dropdown based on options array
+    function getVisibleCheckboxes() {
+      const wrapper = $('checkbox-values');
+      if (!wrapper) return [];
+      return Array.from(wrapper.querySelectorAll('input[type="checkbox"].value-checkbox'));
+    }
+
+    function updateSelectAllState() {
+      const top = $('select-all');
+      if (!top) return;
+      const boxes = getVisibleCheckboxes().filter(el => el.closest('label').style.display !== 'none');
+      if (boxes.length === 0) { top.checked = false; top.indeterminate = false; return; }
+      const checked = boxes.filter(b => b.checked).length;
+      if (checked === 0) { top.checked = false; top.indeterminate = false; }
+      else if (checked === boxes.length) { top.checked = true; top.indeterminate = false; }
+      else { top.checked = false; top.indeterminate = true; }
+    }
+
+    function applySearchFilter() {
+      const q = String($('search').value || '').trim().toLowerCase();
+      const wrapper = $('checkbox-values');
+      if (!wrapper) return;
+      const labels = Array.from(wrapper.querySelectorAll('label'));
+      labels.forEach(label => {
+        const text = (label.textContent || '').toLowerCase();
+        label.style.display = (q === '' || text.indexOf(q) !== -1) ? 'flex' : 'none';
+      });
+      updateSelectAllState();
+    }
+
+    function applySelectionFromUI() {
+      const visible = getVisibleCheckboxes().filter(i => i.closest('label').style.display !== 'none');
+      const checked = visible.filter(i => i.checked).map(i => String(i.value));
+      selectRows(checked);
+      updateSelectAllState();
+    }
+
     function renderCheckboxes(options) {
-      const normalized = Array.isArray(options)
-        ? options.filter(opt => opt !== null && opt !== undefined).map(opt => String(opt))
-        : [];
+      const normalized = Array.isArray(options) ? options.filter(opt => opt !== null && opt !== undefined).map(opt => String(opt)) : [];
       const uniqoptions = Array.from(new Set(normalized)).sort();
       const container = $('dropdown');
       if (!container) return;
       container.innerHTML = '';
-
-      // small header: (search and select-all exist outside, but we keep consistency)
       const listWrapper = document.createElement('div');
       listWrapper.id = 'checkbox-values';
       container.appendChild(listWrapper);
 
-      // restore selection if session set
-      let currentSelections = restoreSelectionFromSession(uniqoptions);
+      const currentSelections = restoreSelectionFromSession(uniqoptions);
 
-      // if no options
       if (uniqoptions.length === 0) {
         const p = document.createElement('div');
         p.textContent = 'No options available';
@@ -216,17 +196,10 @@
         return;
       }
 
-      // create each checkbox label
       uniqoptions.forEach(opt => {
         const id = 'cb_' + Math.random().toString(36).slice(2, 9);
         const label = document.createElement('label');
         label.htmlFor = id;
-        label.style.display = 'flex';
-        label.style.alignItems = 'center';
-        label.style.gap = '8px';
-        label.style.padding = '6px 4px';
-        label.style.cursor = 'pointer';
-        label.style.borderRadius = '4px';
 
         const input = document.createElement('input');
         input.type = 'checkbox';
@@ -235,10 +208,7 @@
         input.value = String(opt);
         input.setAttribute('aria-checked', 'false');
 
-        if (currentSelections.includes(String(opt))) {
-          input.checked = true;
-          input.setAttribute('aria-checked', 'true');
-        }
+        if (currentSelections.includes(String(opt))) { input.checked = true; input.setAttribute('aria-checked','true'); }
 
         const span = document.createElement('span');
         span.textContent = String(opt);
@@ -253,67 +223,14 @@
         listWrapper.appendChild(label);
       });
 
-      // apply initial selection
-      if (currentSelections.length === 0) {
-        selectRows([]);
-      } else {
-        selectRows(currentSelections);
-      }
+      // initial selection application
+      if (currentSelections.length === 0) selectRows([]);
+      else selectRows(currentSelections);
 
       currentoptions = [''].concat(uniqoptions);
       updateSelectAllState();
     }
 
-    function getVisibleCheckboxes() {
-      const wrapper = $('checkbox-values');
-      if (!wrapper) return [];
-      return Array.from(wrapper.querySelectorAll('input[type="checkbox"].value-checkbox'));
-    }
-
-    function applySelectionFromUI() {
-      const visible = getVisibleCheckboxes();
-      const checked = visible.filter(i => i.checked).map(i => String(i.value));
-      selectRows(checked);
-      updateSelectAllState();
-    }
-
-    function updateSelectAllState() {
-      const top = $('select-all');
-      if (!top) return;
-      const boxes = getVisibleCheckboxes();
-      if (boxes.length === 0) {
-        top.checked = false;
-        top.indeterminate = false;
-        return;
-      }
-      const checked = boxes.filter(b => b.checked).length;
-      if (checked === 0) {
-        top.checked = false;
-        top.indeterminate = false;
-      } else if (checked === boxes.length) {
-        top.checked = true;
-        top.indeterminate = false;
-      } else {
-        top.checked = false;
-        top.indeterminate = true;
-      }
-    }
-
-    // filter visible checkboxes by search input
-    function applySearchFilter() {
-      const q = String($('search').value || '').trim().toLowerCase();
-      const wrapper = $('checkbox-values');
-      if (!wrapper) return;
-      const labels = Array.from(wrapper.querySelectorAll('label'));
-      labels.forEach(label => {
-        const text = (label.textContent || '').toLowerCase();
-        label.style.display = (q === '' || text.indexOf(q) !== -1) ? 'flex' : 'none';
-      });
-      // after hiding/showing, update select-all state to reflect visible checkboxes
-      updateSelectAllState();
-    }
-
-    // Save session option when saving config
     function saveOption() {
       const sid = String($('sessionid').value || '').trim();
       if (grist && grist.widgetApi && typeof grist.widgetApi.setOption === 'function') {
@@ -326,34 +243,23 @@
     }
 
     function initUIHandlers() {
-      // save button
       const saveBtn = $('save');
       if (saveBtn) saveBtn.addEventListener('click', saveOption);
 
-      // search input
       const search = $('search');
-      if (search) {
-        search.addEventListener('input', function () {
-          applySearchFilter();
-        });
-      }
+      if (search) search.addEventListener('input', function () { applySearchFilter(); });
 
-      // select-all top checkbox
       const top = $('select-all');
       if (top) {
         top.addEventListener('change', function (e) {
           const checked = e.target.checked;
-          const boxes = getVisibleCheckboxes();
-          boxes.forEach(b => {
-            b.checked = checked;
-            b.setAttribute('aria-checked', checked ? 'true' : 'false');
-          });
+          const boxes = getVisibleCheckboxes().filter(i => i.closest('label').style.display !== 'none');
+          boxes.forEach(b => { b.checked = checked; b.setAttribute('aria-checked', checked ? 'true' : 'false'); });
           applySelectionFromUI();
         });
       }
     }
 
-    // init grist lifecycle
     function initGrist() {
       initUIHandlers();
 
@@ -367,64 +273,84 @@
         requiredAccess: 'read table',
         allowSelectBy: true,
         onEditOptions() {
-          document.getElementById("container").style.display = 'none';
-          document.getElementById("config").style.display = '';
-          document.getElementById("sessionid").value = sessionID || '';
+          $('container').style.display = 'none';
+          $('config').style.display = '';
+          $('sessionid').value = sessionID || '';
         },
       });
 
       grist.onOptions((customOptions, _) => {
         customOptions = customOptions || {};
         sessionID = customOptions.sessionid || "";
-        document.getElementById("container").style.display = '';
-        document.getElementById("config").style.display = 'none';
+        $('container').style.display = '';
+        $('config').style.display = 'none';
       });
 
+      // onRecords still used to react to view changes,
+      // but we fetch the full table to populate allRecords/options.
       grist.onRecords(function (records, mappings) {
+        // If onRecords provides no records, we still attempt full fetch but show error.
         if (!records || records.length === 0) {
-          showError("No records received");
-          renderCheckboxes([]);
-          grist.setSelectedRows(null);
-          return;
+          showError("No records received in view (fetching full table) — this may be normal if the view is filtered.");
+        } else {
+          showError("");
         }
 
-        // récupérer toute la table au lieu de se baser sur records
-grist.docApi.fetchSelectedTable().then(fullTable => {
-  if (!fullTable || !fullTable.records || fullTable.records.length === 0) {
-    showError("No records received from full table fetch");
-    renderCheckboxes([]);
-    grist.setSelectedRows(null);
-    return;
-  }
-
-  allRecords = fullTable.records; // <-- on stocke toutes les lignes
-  column = mappings && mappings.OptionsToSelect;
-  const mapped = grist.mapColumnNames(records); // on peut garder mapped sur les records reçus, ou fullTable.records si tu veux toutes les options
-
-  showError("");
-  const options = mapped
-    .map(record => record.OptionsToSelect)
-    .filter(option => option !== null && option !== undefined);
-
-  if (options.length === 0) {
-    showError("No valid options found");
-  }
-
-  renderCheckboxes(options);
-});
-
+        // fetch the full table content (solution 1)
+        if (grist && grist.docApi && typeof grist.docApi.fetchSelectedTable === 'function') {
+          grist.docApi.fetchSelectedTable().then(fullTable => {
+            try {
+              const fullRecords = (fullTable && fullTable.records) ? fullTable.records : (records || []);
+              allRecords = fullRecords;
+              column = mappings && mappings.OptionsToSelect;
+              // Build options from the full records (so you get all possible filter values)
+              const mappedAll = grist.mapColumnNames(fullRecords);
+              const options = mappedAll
+                .map(r => r.OptionsToSelect)
+                .filter(o => o !== null && o !== undefined);
+              if (options.length === 0) showError("No valid options found in full table");
+              renderCheckboxes(options);
+            } catch (err) {
+              console.error('Error processing full table response', err);
+              showError('Erreur lors du traitement des données complètes (voir console).');
+              // fallback to view records if any
+              const mapped = grist.mapColumnNames(records || []);
+              const options = (mapped || []).map(r => r.OptionsToSelect).filter(o => o !== null && o !== undefined);
+              renderCheckboxes(options);
+            }
+          }).catch(err => {
+            console.error('fetchSelectedTable failed', err);
+            showError('Impossible de récupérer toutes les lignes (fetchSelectedTable échoué). Utilisation des enregistrements de la vue.');
+            // fallback to using provided view records
+            try {
+              allRecords = records || [];
+              column = mappings && mappings.OptionsToSelect;
+              const mapped = grist.mapColumnNames(records || []);
+              const options = (mapped || []).map(r => r.OptionsToSelect).filter(o => o !== null && o !== undefined);
+              renderCheckboxes(options);
+            } catch (e) {
+              console.error('Fallback processing failed', e);
+              renderCheckboxes([]);
+            }
+          });
+        } else {
+          // If fetchSelectedTable not available, fallback to existing behavior
+          console.warn('grist.docApi.fetchSelectedTable not available - falling back to view records');
+          allRecords = records || [];
+          column = mappings && mappings.OptionsToSelect;
+          const mapped = grist.mapColumnNames(records || []);
+          const options = (mapped || []).map(r => r.OptionsToSelect).filter(o => o !== null && o !== undefined);
+          renderCheckboxes(options);
+        }
+      });
     }
 
     // selectRows: accept string, array, or empty => set selected row IDs in Grist
     function selectRows(value) {
       let values = [];
-      if (value == null) {
-        values = [];
-      } else if (Array.isArray(value)) {
-        values = value.map(v => String(v)).filter(v => v !== '');
-      } else {
-        values = String(value).length > 0 ? [String(value)] : [];
-      }
+      if (value == null) values = [];
+      else if (Array.isArray(value)) values = value.map(v => String(v)).filter(v => v !== '');
+      else values = String(value).length > 0 ? [String(value)] : [];
 
       if (values.length === 0) {
         grist.setSelectedRows(null);
@@ -439,7 +365,7 @@ grist.docApi.fetchSelectedTable().then(fullTable => {
 
       const valsSet = new Set(values);
       const rows = allRecords
-        .filter((item) => {
+        .filter(item => {
           const itemVal = item && item[column] !== undefined && item[column] !== null ? String(item[column]) : '';
           return valsSet.has(itemVal);
         })
@@ -449,7 +375,6 @@ grist.docApi.fetchSelectedTable().then(fullTable => {
       grist.setSelectedRows(rows);
     }
 
-    // start when DOM loaded
     document.addEventListener('DOMContentLoaded', initGrist);
   })();
   </script>
