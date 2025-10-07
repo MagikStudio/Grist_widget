@@ -1,4 +1,4 @@
-# Grist_widget
+# Advanced-Multi-Filter-Widget Read-me
 
 Bienvenue sur le dépôt Git de l’extension Grist – Advanced Multi-Filter Widget.
 
