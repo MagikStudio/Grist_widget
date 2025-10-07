@@ -388,21 +388,31 @@
           return;
         }
 
-        allRecords = records;
-        column = mappings && mappings.OptionsToSelect;
-        const mapped = grist.mapColumnNames(records);
+        // récupérer toute la table au lieu de se baser sur records
+grist.docApi.fetchSelectedTable().then(fullTable => {
+  if (!fullTable || !fullTable.records || fullTable.records.length === 0) {
+    showError("No records received from full table fetch");
+    renderCheckboxes([]);
+    grist.setSelectedRows(null);
+    return;
+  }
 
-        showError("");
-        const options = mapped
-          .map(record => record.OptionsToSelect)
-          .filter(option => option !== null && option !== undefined);
+  allRecords = fullTable.records; // <-- on stocke toutes les lignes
+  column = mappings && mappings.OptionsToSelect;
+  const mapped = grist.mapColumnNames(records); // on peut garder mapped sur les records reçus, ou fullTable.records si tu veux toutes les options
 
-        if (options.length === 0) {
-          showError("No valid options found");
-        }
+  showError("");
+  const options = mapped
+    .map(record => record.OptionsToSelect)
+    .filter(option => option !== null && option !== undefined);
 
-        renderCheckboxes(options);
-      });
+  if (options.length === 0) {
+    showError("No valid options found");
+  }
+
+  renderCheckboxes(options);
+});
+
     }
 
     // selectRows: accept string, array, or empty => set selected row IDs in Grist
