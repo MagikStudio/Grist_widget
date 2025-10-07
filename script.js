@@ -15,85 +15,151 @@ function showError(msg) {
   }
 }
 
-// Met à jour le dropdown avec des options uniques (sécurisé) et prend en charge la multi-sélection
-function updateDropdown(options) {
-  // normalise en chaînes, filtre null/undefined et déduplique via Set
+// Récupère la sélection sauvegardée (retourne un tableau de strings)
+function restoreSelectionFromSession(uniqoptions) {
+  if (!sessionID) return [];
+  const raw = sessionStorage.getItem(sessionID + "_Dropdownfilter_Item");
+  if (raw === null) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map(v => String(v)).filter(v => uniqoptions.includes(String(v)));
+    }
+    if (typeof parsed === 'string' && uniqoptions.includes(parsed)) {
+      return [parsed];
+    }
+  } catch (e) {
+    // fallback si raw est juste une string
+    if (raw.length > 0 && uniqoptions.includes(raw)) return [raw];
+  }
+  return [];
+}
+
+// Met à jour la liste de cases (checkboxes)
+function updateCheckboxList(options) {
   const normalized = Array.isArray(options)
     ? options.filter(opt => opt !== null && opt !== undefined).map(opt => String(opt))
     : [];
   const uniqoptions = Array.from(new Set(normalized)).sort();
 
-  const dropdown = document.getElementById('dropdown');
+  // On remplace l'élément <select> par une div de checkboxes (sans modifier HTML source)
+  const orig = document.getElementById('dropdown');
+  const container = document.createElement('div');
+  container.id = 'checkbox-list';
+  container.style.overflowY = 'auto';
+  container.style.height = '100%';
+  container.style.boxSizing = 'border-box';
+  container.style.padding = '4px';
 
-  // s'assurer que le select est en mode multiple
-  dropdown.multiple = true;
-  // optionnel: définir un nombre de lignes visibles
-  dropdown.size = Math.min(Math.max(4, uniqoptions.length), 12);
+  // restaurer sélection si possible
+  let currentSelections = restoreSelectionFromSession(uniqoptions);
 
-  // récupérer sélection courante (peut être multiple)
-  let currentSelections = [];
-  // si dropdown a déjà une sélection valide => la garder
-  if (dropdown && dropdown.selectedOptions && dropdown.selectedOptions.length > 0) {
-    currentSelections = Array.from(dropdown.selectedOptions).map(opt => String(opt.value)).filter(v => v !== '');
+  // si pas de sélection et orig avait selection(s), essayer de les lire (cas d'un re-render)
+  if (currentSelections.length === 0 && orig && orig.selectedOptions && orig.selectedOptions.length > 0) {
+    currentSelections = Array.from(orig.selectedOptions).map(o => String(o.value)).filter(v => v !== '' && uniqoptions.includes(v));
   }
-
-  // si pas de sélection et sessionID => tenter restore depuis sessionStorage (defensif)
-  if ((currentSelections.length === 0) && sessionID.length > 0) {
-    const raw = sessionStorage.getItem(sessionID + "_Dropdownfilter_Item");
-    if (raw !== null) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          // garder seulement les valeurs encore présentes dans options
-          currentSelections = parsed.filter(v => uniqoptions.includes(String(v))).map(v => String(v));
-        } else if (typeof parsed === 'string' && parsed.length > 0 && uniqoptions.includes(parsed)) {
-          currentSelections = [parsed];
-        }
-      } catch (e) {
-        // fallback: raw may be a string
-        if (raw.length > 0 && uniqoptions.includes(raw)) currentSelections = [raw];
-      }
-    }
-  }
-
-  // rebuild options
-  dropdown.innerHTML = '';
 
   if (uniqoptions.length === 0) {
-    const optionElement = document.createElement('option');
-    optionElement.value = '';
-    optionElement.textContent = 'No options available';
-    dropdown.appendChild(optionElement);
+    const p = document.createElement('div');
+    p.textContent = 'No options available';
+    container.appendChild(p);
+    replaceNode(orig, container);
     grist.setSelectedRows(null);
     return;
   }
 
-  // ajouter une option vide en tête pour "aucune sélection"
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = '-- none --';
-  dropdown.appendChild(placeholder);
+  // case "Tout sélectionner"
+  const topLabel = document.createElement('label');
+  topLabel.style.display = 'block';
+  topLabel.style.marginBottom = '6px';
+  topLabel.style.fontSize = '13px';
+  const topInput = document.createElement('input');
+  topInput.type = 'checkbox';
+  topInput.id = 'checkbox-select-all';
+  topInput.style.marginRight = '6px';
+  topLabel.appendChild(topInput);
+  const topText = document.createTextNode('Tout sélectionner / Tout désélectionner');
+  topLabel.appendChild(topText);
+  container.appendChild(topLabel);
 
-  uniqoptions.forEach((option) => {
-    const optionElement = document.createElement('option');
-    optionElement.value = String(option);
-    optionElement.textContent = String(option);
-    if (currentSelections.includes(String(option))) {
-      optionElement.selected = true;
-    }
-    dropdown.appendChild(optionElement);
+  topInput.addEventListener('change', function(e) {
+    const checked = e.target.checked;
+    const inputs = container.querySelectorAll('input[type="checkbox"].value-checkbox');
+    inputs.forEach(inp => {
+      inp.checked = checked;
+    });
+    // récupérer valeurs cochées et appliquer
+    const vals = Array.from(inputs).filter(i => i.checked).map(i => i.value);
+    selectRows(vals);
   });
 
-  // appliquer la sélection (vide ou multiple)
+  // Liste des options en checkbox
+  uniqoptions.forEach(opt => {
+    const label = document.createElement('label');
+    label.style.display = 'block';
+    label.style.userSelect = 'none';
+    label.style.cursor = 'pointer';
+    label.style.marginBottom = '4px';
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.className = 'value-checkbox';
+    input.value = String(opt);
+    input.style.marginRight = '6px';
+
+    if (currentSelections.includes(String(opt))) {
+      input.checked = true;
+    }
+
+    input.addEventListener('change', function() {
+      // Mettre à jour l'état du select-all (si tous cochés -> coché, sinon décoché)
+      const allInputs = container.querySelectorAll('input[type="checkbox"].value-checkbox');
+      const checkedInputs = Array.from(allInputs).filter(i => i.checked);
+      topInput.checked = (checkedInputs.length === allInputs.length && allInputs.length > 0);
+      // appliquer la sélection
+      const selectedValues = checkedInputs.map(i => String(i.value));
+      selectRows(selectedValues);
+    });
+
+    label.appendChild(input);
+    const span = document.createElement('span');
+    span.textContent = String(opt);
+    label.appendChild(span);
+
+    container.appendChild(label);
+  });
+
+  // régler le checkbox "select all" selon la sélection initiale
+  const allInputsNow = container.querySelectorAll('input[type="checkbox"].value-checkbox');
+  const checkedNow = Array.from(allInputsNow).filter(i => i.checked);
+  topInput.checked = (checkedNow.length === allInputsNow.length && allInputsNow.length > 0);
+
+  replaceNode(orig, container);
+
+  // appliquer sélection initiale
   if (currentSelections.length === 0) {
-    dropdown.value = '';
-    selectRows([]); // clear selection
+    selectRows([]);
   } else {
-    // s'assurer que les options sélectionnées sont appliquées (browser gère selected attrib)
     selectRows(currentSelections);
   }
 
   currentoptions = [''].concat(uniqoptions);
+}
+
+// remplace node existant par nodeNew
+function replaceNode(oldNode, newNode) {
+  if (!oldNode || !oldNode.parentNode) {
+    // si l'élément select a été retiré, on attache au container principal
+    const root = document.getElementById('container');
+    if (root) {
+      // retirer tout ce qui porte l'id "checkbox-list" précédent s'il existe
+      const prev = document.getElementById('checkbox-list');
+      if (prev) prev.remove();
+      root.insertBefore(newNode, document.getElementById('error'));
+    }
+    return;
+  }
+  oldNode.parentNode.replaceChild(newNode, oldNode);
 }
 
 // Sauvegarde l'option sessionid dans la config du widget
@@ -136,7 +202,7 @@ function initGrist() {
   grist.onRecords(function (records, mappings) {
     if (!records || records.length === 0) {
       showError("No records received");
-      updateDropdown([]);
+      updateCheckboxList([]);
       grist.setSelectedRows(null);
       return;
     }
@@ -153,22 +219,12 @@ function initGrist() {
     if (options.length === 0) {
       showError("No valid options found");
     }
-    updateDropdown(options);
-  });
-
-  // changement sur le select : peut être multiple
-  document.getElementById('dropdown').addEventListener('change', function(event) {
-    const sel = event && event.target ? event.target : null;
-    if (!sel) return;
-    // selectedOptions est une collection
-    const selectedValues = Array.from(sel.selectedOptions).map(opt => String(opt.value)).filter(v => v !== '');
-    selectRows(selectedValues);
+    updateCheckboxList(options);
   });
 }
 
 // sélection des lignes correspondantes — accepte string, array ou vide
 function selectRows(value) {
-  // normaliser value en tableau
   let values = [];
   if (value == null) {
     values = [];
@@ -179,7 +235,6 @@ function selectRows(value) {
   }
 
   if (values.length === 0) {
-    // clear selection
     grist.setSelectedRows(null);
     if (sessionID.length > 0) sessionStorage.setItem(sessionID + "_Dropdownfilter_Item", JSON.stringify([]));
     return;
@@ -190,7 +245,6 @@ function selectRows(value) {
     return;
   }
 
-  // union des ids correspondant à n'importe quelle valeur
   const valsSet = new Set(values);
   const rows = allRecords
     .filter((item) => {
@@ -203,7 +257,7 @@ function selectRows(value) {
   grist.setSelectedRows(rows);
 }
 
-// fonction uniq plus robuste (on préfère Set)
+// uniq (toujours renvoyer tableau)
 function uniq(a) {
   if (!Array.isArray(a)) return [];
   return Array.from(new Set(a.filter(x => x !== null && x !== undefined && String(x).length > 0)));
