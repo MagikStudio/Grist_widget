@@ -3,9 +3,9 @@
 Bienvenue sur le dépôt Git de l’extension Grist – Advanced Multi-Filter Widget.
 
 Vous pouvez utiliser l’URL suivante :
-👉 https://magikstudio.github.io/Grist_widget/
+👉 https://magikstudio.github.io/Advanced-Multi-Filter-Widget/
 
-ainsi que l’extension d’URL personnalisée de Grist pour ajouter le système de filtrage à votre document.
+ainsi que l’extension *d’URL personnalisée* de Grist pour ajouter le système de filtrage à votre document.
 
 
 Ce module doit être sélectionné comme source pour vos différents graphiques, afin de les filtrer tous simultanément.
